@@ -1,3 +1,4 @@
+import math
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -105,6 +106,7 @@ def get_projects():
     return jsonify([p.to_dict() for p in projects])
 
 @app.route('/api/projects', methods=['POST'])
+
 def add_project():
     data = request.get_json()
     project = Project(title=data['title'], description=data['description'], link=data['link'])
