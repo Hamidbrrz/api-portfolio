@@ -13,44 +13,62 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
+# ========= BLOG ROUTES =========
 @app.route('/api/posts', methods=['GET'])
 def get_posts():
-    return jsonify([post.to_dict() for post in BlogPost.query.all()])
+    posts = BlogPost.query.all()
+    return jsonify([post.to_dict() for post in posts])
 
 @app.route('/api/posts', methods=['POST'])
 def create_post():
     data = request.get_json()
-    post = BlogPost(title=data['title'], content=data['content'])
-    db.session.add(post)
+    new_post = BlogPost(title=data['title'], content=data['content'])
+    db.session.add(new_post)
     db.session.commit()
-    return jsonify(post.to_dict()), 201
+    return jsonify(new_post.to_dict()), 201
+
+@app.route('/api/posts/<int:id>', methods=['PUT'])
+def update_post(id):
+    data = request.get_json()
+    post = BlogPost.query.get_or_404(id)
+    post.title = data.get('title', post.title)
+    post.content = data.get('content', post.content)
+    db.session.commit()
+    return jsonify(post.to_dict()), 200
 
 @app.route('/api/posts/<int:id>', methods=['DELETE'])
 def delete_post(id):
     post = BlogPost.query.get_or_404(id)
     db.session.delete(post)
     db.session.commit()
-    return jsonify({'message': 'deleted'}), 200
+    return jsonify({'message': 'Post deleted'}), 200
 
+# ========= PROJECT ROUTES =========
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
-    return jsonify([p.to_dict() for p in Project.query.all()])
+    projects = Project.query.all()
+    return jsonify([p.to_dict() for p in projects])
 
 @app.route('/api/projects', methods=['POST'])
 def create_project():
     data = request.get_json()
-    p = Project(title=data['title'], description=data['description'], link=data['link'])
-    db.session.add(p)
+    new_project = Project(
+        title=data['title'],
+        description=data['description'],
+        link=data['link']
+    )
+    db.session.add(new_project)
     db.session.commit()
-    return jsonify(p.to_dict()), 201
+    return jsonify(new_project.to_dict()), 201
 
 @app.route('/api/projects/<int:id>', methods=['DELETE'])
 def delete_project(id):
-    p = Project.query.get_or_404(id)
-    db.session.delete(p)
+    project = Project.query.get_or_404(id)
+    db.session.delete(project)
     db.session.commit()
-    return jsonify({'message': 'deleted'}), 200
+    return jsonify({'message': 'Project deleted'}), 200
 
+# ========= ABOUT ROUTES =========
 @app.route('/api/about', methods=['GET'])
 def get_about():
     about = About.query.first()
@@ -63,15 +81,15 @@ def update_about():
     data = request.get_json()
     about = About.query.first()
     if not about:
-        about = About(name=data['name'], title=data['title'], bio=data['bio'], image_url=data['image_url'])
-        db.session.add(about)
-    else:
-        about.name = data['name']
-        about.title = data['title']
-        about.bio = data['bio']
-        about.image_url = data['image_url']
+        about = About()
+    about.name = data.get("name", "")
+    about.title = data.get("title", "")
+    about.bio = data.get("bio", "")
+    about.image_url = data.get("image_url", "")
+    db.session.add(about)
     db.session.commit()
     return jsonify(about.to_dict())
 
+# ========= MAIN =========
 if __name__ == '__main__':
     app.run(debug=True)
