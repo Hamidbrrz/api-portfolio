@@ -13,7 +13,7 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-# ========= BLOG ROUTES =========
+# ---------- BLOG POSTS ----------
 @app.route('/api/posts', methods=['GET'])
 def get_posts():
     posts = BlogPost.query.all()
@@ -43,11 +43,11 @@ def delete_post(id):
     db.session.commit()
     return jsonify({'message': 'Post deleted'}), 200
 
-# ========= PROJECT ROUTES =========
+# ---------- PROJECTS ----------
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
     projects = Project.query.all()
-    return jsonify([p.to_dict() for p in projects])
+    return jsonify([project.to_dict() for project in projects])
 
 @app.route('/api/projects', methods=['POST'])
 def create_project():
@@ -68,13 +68,13 @@ def delete_project(id):
     db.session.commit()
     return jsonify({'message': 'Project deleted'}), 200
 
-# ========= ABOUT ROUTES =========
+# ---------- ABOUT ----------
 @app.route('/api/about', methods=['GET'])
 def get_about():
     about = About.query.first()
-    if not about:
-        return jsonify({})
-    return jsonify(about.to_dict())
+    if about:
+        return jsonify(about.to_dict())
+    return jsonify({})
 
 @app.route('/api/about', methods=['POST'])
 def update_about():
@@ -82,14 +82,15 @@ def update_about():
     about = About.query.first()
     if not about:
         about = About()
-    about.name = data.get("name", "")
-    about.title = data.get("title", "")
-    about.bio = data.get("bio", "")
-    about.image_url = data.get("image_url", "")
-    db.session.add(about)
-    db.session.commit()
-    return jsonify(about.to_dict())
+        db.session.add(about)
 
-# ========= MAIN =========
+    about.name = data.get('name', '')
+    about.title = data.get('title', '')
+    about.bio = data.get('bio', '')
+    about.image_url = data.get('image_url', '')
+    db.session.commit()
+    return jsonify(about.to_dict()), 200
+
+# ---------- MAIN ----------
 if __name__ == '__main__':
     app.run(debug=True)
