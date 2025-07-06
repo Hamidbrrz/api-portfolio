@@ -36,7 +36,43 @@ class About(db.Model):
 
     def to_dict(self):
         return {'name': self.name, 'title': self.title, 'bio': self.bio, 'image_url': self.image_url}
+class Contact(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255))
+    linkedin = db.Column(db.String(255))
+    github = db.Column(db.String(255))
+    message = db.Column(db.Text)
 
+    def to_dict(self):
+        return {
+            'email': self.email,
+            'linkedin': self.linkedin,
+            'github': self.github,
+            'message': self.message,
+        }
+
+@app.route('/api/contact', methods=['GET'])
+def get_contact():
+    contact = Contact.query.first()
+    if contact:
+        return jsonify(contact.to_dict())
+    return jsonify({})
+
+@app.route('/api/contact', methods=['POST'])
+def update_contact():
+    data = request.get_json()
+    contact = Contact.query.first()
+    if not contact:
+        contact = Contact()
+        db.session.add(contact)
+
+    contact.email = data.get('email')
+    contact.linkedin = data.get('linkedin')
+    contact.github = data.get('github')
+    contact.message = data.get('message')
+
+    db.session.commit()
+    return jsonify({'message': 'Contact updated!'})
 
 # BLOG ROUTES
 @app.route('/api/blog', methods=['GET'])
@@ -108,6 +144,9 @@ def update_about():
 
 
 if __name__ == '__main__':
+    from flask_migrate import Migrate
+    migrate = Migrate(app, db)
+    
     with app.app_context():
-        db.create_all()
+        db.create_all()  # ⚠️ Crée seulement si vide
     app.run(host='0.0.0.0', port=5000, debug=True)
