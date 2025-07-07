@@ -2,19 +2,29 @@ import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+from dotenv import load_dotenv
 
-# ✅ Correction Render : postgres:// → postgresql://
+# ✅ Charger les variables d’environnement depuis .env
+load_dotenv()
+
+# ✅ Corriger postgres:// en postgresql:// pour Render
 if os.getenv("DATABASE_URL", "").startswith("postgres://"):
     os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL").replace("postgres://", "postgresql://", 1)
 
+# ✅ Initialisation de l’app Flask
 app = Flask(__name__)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# ✅ Initialisation de SQLAlchemy
 db = SQLAlchemy(app)
 
+# ✅ Initialisation de Flask-Migrate
+from flask_migrate import Migrate
+migrate = Migrate(app, db)
 
-# Models
+# ✅ MODELS
 class BlogPost(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(120))
@@ -41,6 +51,7 @@ class About(db.Model):
 
     def to_dict(self):
         return {'name': self.name, 'title': self.title, 'bio': self.bio, 'image_url': self.image_url}
+
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255))
@@ -56,30 +67,25 @@ class Contact(db.Model):
             'message': self.message,
         }
 
+# ✅ ROUTES
+
 @app.route('/api/contact', methods=['GET'])
 def get_contact():
     contact = Contact.query.first()
-    if contact:
-        return jsonify(contact.to_dict())
-    return jsonify({})
+    return jsonify(contact.to_dict()) if contact else jsonify({})
 
 @app.route('/api/contact', methods=['POST'])
 def update_contact():
     data = request.get_json()
-    contact = Contact.query.first()
-    if not contact:
-        contact = Contact()
-        db.session.add(contact)
-
+    contact = Contact.query.first() or Contact()
     contact.email = data.get('email')
     contact.linkedin = data.get('linkedin')
     contact.github = data.get('github')
     contact.message = data.get('message')
-
+    db.session.add(contact)
     db.session.commit()
     return jsonify({'message': 'Contact updated!'})
 
-# BLOG ROUTES
 @app.route('/api/blog', methods=['GET'])
 def get_blog():
     posts = BlogPost.query.all()
@@ -102,15 +108,12 @@ def delete_blog(id):
     db.session.commit()
     return jsonify({'message': 'Supprimé'})
 
-
-# PROJETS ROUTES
 @app.route('/api/projects', methods=['GET'])
 def get_projects():
     projects = Project.query.all()
     return jsonify([p.to_dict() for p in projects])
 
 @app.route('/api/projects', methods=['POST'])
-
 def add_project():
     data = request.get_json()
     project = Project(title=data['title'], description=data['description'], link=data['link'])
@@ -127,32 +130,35 @@ def delete_project(id):
     db.session.commit()
     return jsonify({'message': 'Supprimé'})
 
-
-# À PROPOS ROUTES
 @app.route('/api/about', methods=['GET'])
 def get_about():
     about = About.query.first()
-    return jsonify(about.to_dict() if about else {})
+    return jsonify(about.to_dict()) if about else jsonify({})
 
 @app.route('/api/about', methods=['POST'])
 def update_about():
     data = request.get_json()
-    about = About.query.first()
-    if not about:
-        about = About()
-        db.session.add(about)
+    about = About.query.first() or About()
     about.name = data.get('name', '')
     about.title = data.get('title', '')
     about.bio = data.get('bio', '')
     about.image_url = data.get('image_url', '')
+    db.session.add(about)
     db.session.commit()
     return jsonify({'message': 'À propos mis à jour'})
 
+# ✅ Extra: commande flask db-check (facultative)
+from flask.cli import with_appcontext
+import click
 
+@app.cli.command("db-check")
+@with_appcontext
+def db_check():
+    """Test rapide de connexion DB"""
+    click.echo("✅ Connexion à la base réussie !")
+
+# ✅ Lancement
 if __name__ == '__main__':
-    from flask_migrate import Migrate
-    migrate = Migrate(app, db)
-    
     with app.app_context():
-        db.create_all()  # ⚠️ Crée seulement si vide
+        db.create_all()
     app.run(host='0.0.0.0', port=5000, debug=True)
