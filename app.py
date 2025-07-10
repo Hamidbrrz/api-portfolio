@@ -101,6 +101,65 @@ class Admin(db.Model):
 
 # ✅ ROUTES
 
+@app.route('/api/import', methods=['POST'])
+@token_required
+def import_data():
+    data = request.get_json()
+
+    # ABOUT
+    about_data = data.get('about', {})
+    about = About.query.first() or About()
+    about.name = about_data.get('name', '')
+    about.title = about_data.get('title', '')
+    about.bio = about_data.get('bio', '')
+    about.image_url = about_data.get('image_url', '')
+    db.session.add(about)
+
+    # CONTACT
+    contact_data = data.get('contact', {})
+    contact = Contact.query.first() or Contact()
+    contact.email = contact_data.get('email', '')
+    contact.linkedin = contact_data.get('linkedin', '')
+    contact.github = contact_data.get('github', '')
+    contact.message = contact_data.get('message', '')
+    db.session.add(contact)
+
+    # BLOG
+    BlogPost.query.delete()
+    for post_data in data.get('blog', []):
+        post = BlogPost(title=post_data.get('title', ''), content=post_data.get('content', ''))
+        db.session.add(post)
+
+    # PROJECTS
+    Project.query.delete()
+    for proj_data in data.get('projects', []):
+        project = Project(
+            title=proj_data.get('title', ''),
+            description=proj_data.get('description', ''),
+            link=proj_data.get('link', '')
+        )
+        db.session.add(project)
+
+    db.session.commit()
+    return jsonify({'message': 'Import terminé avec succès'})
+
+
+@app.route('/api/export', methods=['GET'])
+@token_required
+def export_data():
+    about = About.query.first()
+    contact = Contact.query.first()
+    projects = Project.query.all()
+    blog_posts = BlogPost.query.all()
+
+    return jsonify({
+        'about': about.to_dict() if about else {},
+        'contact': contact.to_dict() if contact else {},
+        'projects': [p.to_dict() for p in projects],
+        'blog': [b.to_dict() for b in blog_posts],
+    })
+
+
 @app.route('/api/setup-admin', methods=['POST'])
 def setup_admin():
     data = request.get_json()
