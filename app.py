@@ -3,26 +3,47 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from dotenv import load_dotenv
+from flask_migrate import Migrate
+from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+import datetime
+from functools import wraps
+from flask.cli import with_appcontext
+import click
 
-# ✅ Charger les variables d’environnement depuis .env
+# ✅ Charger les variables d’environnement
 load_dotenv()
 
-# ✅ Corriger postgres:// en postgresql:// pour Render
+# ✅ Corriger postgres:// → postgresql://
 if os.getenv("DATABASE_URL", "").startswith("postgres://"):
     os.environ["DATABASE_URL"] = os.getenv("DATABASE_URL").replace("postgres://", "postgresql://", 1)
 
-# ✅ Initialisation de l’app Flask
+# ✅ Initialisation Flask
 app = Flask(__name__)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# ✅ Initialisation de SQLAlchemy
 db = SQLAlchemy(app)
-
-# ✅ Initialisation de Flask-Migrate
-from flask_migrate import Migrate
 migrate = Migrate(app, db)
+
+# ✅ Clé secrète pour JWT
+SECRET_KEY = os.getenv('SECRET_KEY', 'default-secret')
+
+# ✅ Décorateur pour routes protégées
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization', '').replace("Bearer ", "")
+        if not token:
+            return jsonify({'error': 'Token manquant'}), 403
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            current_user = Admin.query.filter_by(username=data['username']).first()
+        except Exception:
+            return jsonify({'error': 'Token invalide'}), 403
+        return f(*args, **kwargs)
+    return decorated
 
 # ✅ MODELS
 class BlogPost(db.Model):
@@ -67,7 +88,41 @@ class Contact(db.Model):
             'message': self.message,
         }
 
+class Admin(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True)
+    password_hash = db.Column(db.String(200))
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
 # ✅ ROUTES
+
+@app.route('/api/setup-admin', methods=['POST'])
+def setup_admin():
+    data = request.get_json()
+    admin = Admin(username=data['username'])
+    admin.set_password(data['password'])
+    db.session.add(admin)
+    db.session.commit()
+    return jsonify({'message': 'Admin créé'})
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    admin = Admin.query.filter_by(username=data['username']).first()
+
+    if admin and admin.check_password(data['password']):
+        token = jwt.encode({
+            'username': admin.username,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        }, SECRET_KEY, algorithm='HS256')
+        return jsonify({'token': token})
+
+    return jsonify({'error': 'Identifiants invalides'}), 401
 
 @app.route('/api/contact', methods=['GET'])
 def get_contact():
@@ -75,6 +130,7 @@ def get_contact():
     return jsonify(contact.to_dict()) if contact else jsonify({})
 
 @app.route('/api/contact', methods=['POST'])
+@token_required
 def update_contact():
     data = request.get_json()
     contact = Contact.query.first() or Contact()
@@ -92,6 +148,7 @@ def get_blog():
     return jsonify([post.to_dict() for post in posts])
 
 @app.route('/api/blog', methods=['POST'])
+@token_required
 def create_blog():
     data = request.get_json()
     post = BlogPost(title=data['title'], content=data['content'])
@@ -100,6 +157,7 @@ def create_blog():
     return jsonify({'message': 'Article ajouté'}), 201
 
 @app.route('/api/blog/<int:id>', methods=['DELETE'])
+@token_required
 def delete_blog(id):
     post = BlogPost.query.get(id)
     if not post:
@@ -114,6 +172,7 @@ def get_projects():
     return jsonify([p.to_dict() for p in projects])
 
 @app.route('/api/projects', methods=['POST'])
+@token_required
 def add_project():
     data = request.get_json()
     project = Project(title=data['title'], description=data['description'], link=data['link'])
@@ -122,6 +181,7 @@ def add_project():
     return jsonify({'message': 'Projet ajouté'})
 
 @app.route('/api/projects/<int:id>', methods=['DELETE'])
+@token_required
 def delete_project(id):
     project = Project.query.get(id)
     if not project:
@@ -136,6 +196,7 @@ def get_about():
     return jsonify(about.to_dict()) if about else jsonify({})
 
 @app.route('/api/about', methods=['POST'])
+@token_required
 def update_about():
     data = request.get_json()
     about = About.query.first() or About()
@@ -147,17 +208,14 @@ def update_about():
     db.session.commit()
     return jsonify({'message': 'À propos mis à jour'})
 
-# ✅ Extra: commande flask db-check (facultative)
-from flask.cli import with_appcontext
-import click
-
+# ✅ Commande CLI pour tester la base
 @app.cli.command("db-check")
 @with_appcontext
 def db_check():
     """Test rapide de connexion DB"""
     click.echo("✅ Connexion à la base réussie !")
 
-# ✅ Lancement
+# ✅ Lancer le serveur
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
