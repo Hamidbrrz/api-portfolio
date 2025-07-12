@@ -5,6 +5,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import jwt
 import datetime
 from functools import wraps
@@ -23,6 +24,10 @@ app = Flask(__name__)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# ✅ Chemin pour les fichiers statiques
+UPLOAD_FOLDER = 'static'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -105,8 +110,6 @@ class Admin(db.Model):
 @token_required
 def import_data():
     data = request.get_json()
-
-    # ABOUT
     about_data = data.get('about', {})
     about = About.query.first() or About()
     about.name = about_data.get('name', '')
@@ -115,7 +118,6 @@ def import_data():
     about.image_url = about_data.get('image_url', '')
     db.session.add(about)
 
-    # CONTACT
     contact_data = data.get('contact', {})
     contact = Contact.query.first() or Contact()
     contact.email = contact_data.get('email', '')
@@ -124,13 +126,11 @@ def import_data():
     contact.message = contact_data.get('message', '')
     db.session.add(contact)
 
-    # BLOG
     BlogPost.query.delete()
     for post_data in data.get('blog', []):
         post = BlogPost(title=post_data.get('title', ''), content=post_data.get('content', ''))
         db.session.add(post)
 
-    # PROJECTS
     Project.query.delete()
     for proj_data in data.get('projects', []):
         project = Project(
@@ -143,7 +143,6 @@ def import_data():
     db.session.commit()
     return jsonify({'message': 'Import terminé avec succès'})
 
-
 @app.route('/api/export', methods=['GET'])
 @token_required
 def export_data():
@@ -151,14 +150,12 @@ def export_data():
     contact = Contact.query.first()
     projects = Project.query.all()
     blog_posts = BlogPost.query.all()
-
     return jsonify({
         'about': about.to_dict() if about else {},
         'contact': contact.to_dict() if contact else {},
         'projects': [p.to_dict() for p in projects],
         'blog': [b.to_dict() for b in blog_posts],
     })
-
 
 @app.route('/api/setup-admin', methods=['POST'])
 def setup_admin():
@@ -173,14 +170,12 @@ def setup_admin():
 def login():
     data = request.get_json()
     admin = Admin.query.filter_by(username=data['username']).first()
-
     if admin and admin.check_password(data['password']):
         token = jwt.encode({
             'username': admin.username,
             'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1)
         }, SECRET_KEY, algorithm='HS256')
         return jsonify({'token': token})
-
     return jsonify({'error': 'Identifiants invalides'}), 401
 
 @app.route('/api/contact', methods=['GET'])
@@ -267,11 +262,32 @@ def update_about():
     db.session.commit()
     return jsonify({'message': 'À propos mis à jour'})
 
+# ✅ Route d'upload de fichier (image)
+@app.route('/api/upload', methods=['POST'])
+@token_required
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "Aucun fichier"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Fichier vide"}), 400
+
+    ext = file.filename.rsplit('.', 1)[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({"error": "Extension non autorisée"}), 400
+
+    filename = secure_filename(file.filename)
+    save_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(save_path)
+
+    public_url = f"https://api-portfolio-5yrm.onrender.com/static/{filename}"
+    return jsonify({"url": public_url})
+
 # ✅ Commande CLI pour tester la base
 @app.cli.command("db-check")
 @with_appcontext
 def db_check():
-    """Test rapide de connexion DB"""
     click.echo("✅ Connexion à la base réussie !")
 
 # ✅ Lancer le serveur
